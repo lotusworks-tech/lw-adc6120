@@ -20,7 +20,6 @@ This repository contains all supporting software (`software/`).
 
 | Path | Description |
 |------|-------------|
-| `lw_adc/` | KiCad PCB project — schematic, layout, BOM |
 | `software/install_driver.sh` | Main installer — builds and installs the out-of-tree kernel module, device tree overlay, and services |
 | `software/lw-adc6120.dts` | Device tree overlay (DSP_A / TDM 2×32, I²C address 0x4E) |
 | `software/patches/` | Kernel driver patches applied during install (see below) |
@@ -98,8 +97,8 @@ The installer auto-detects the running kernel version and pulls the matching ups
 **Prerequisites:** internet access and kernel headers (installed automatically by the script).
 
 ```bash
-git clone https://github.com/lotusworks/lw_adc.git
-cd lw_adc/software
+git clone https://github.com/lotusworks-tech/lw-adc6120.git
+cd lw-adc6120/software
 sudo ./install_driver.sh
 sudo reboot
 ```
