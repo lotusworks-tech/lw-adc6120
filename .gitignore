@@ -1,0 +1,21 @@
+# OS files
+.DS_Store
+**/.DS_Store
+Thumbs.db
+desktop.ini
+
+# Env and Logs
+.env
+.env.local
+*.log
+
+# IDEs and History
+.vscode/
+.history/
+.idea/
+*.swp
+
+# Build folders
+node_modules/
+dist/
+build/

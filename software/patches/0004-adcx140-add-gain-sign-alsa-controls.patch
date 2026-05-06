@@ -1,0 +1,31 @@
+From: LotusWorks <apinales@lotusworks.io>
+Subject: [PATCH] sound/soc/ti: adcx140: expose analog gain sign bit as ALSA control
+
+CH1_CFG1[1] and CH2_CFG1[1] are the GAIN_SIGN bits for channels 1 and 2
+(0 = positive gain, 1 = negative gain).  These bits share the same register
+as the existing "Analog CHx Mic Gain Volume" TLV controls but are not
+currently exposed to userspace.
+
+Add two Boolean ALSA controls — one per channel — so that userspace can
+toggle the sign bit through the ALSA/regmap path rather than via direct
+I2C writes, keeping the regmap cache coherent with hardware state.
+
+The lw-adc-hat-ctrl daemon uses these controls together with the existing
+magnitude controls to implement a continuous gain knob spanning -11 dB
+(negative) through 0 dB up to +42 dB (positive) on each channel.
+
+---
+ sound/soc/ti/tlv320adcx140.c | 2 ++
+ 1 file changed, 2 insertions(+)
+
+--- a/tlv320adcx140.c
++++ b/tlv320adcx140.c
+@@ -641,8 +641,10 @@ static const struct snd_kcontrol_new adcx140_snd_controls[] = {
+ 	SOC_SINGLE_TLV("Analog CH1 Mic Gain Volume", ADCX140_CH1_CFG1, 2, 42, 0,
+ 			adc_tlv),
++	SOC_SINGLE("Analog CH1 Gain Sign", ADCX140_CH1_CFG1, 1, 1, 0),
+ 	SOC_SINGLE_TLV("Analog CH2 Mic Gain Volume", ADCX140_CH2_CFG1, 2, 42, 0,
+ 			adc_tlv),
++	SOC_SINGLE("Analog CH2 Gain Sign", ADCX140_CH2_CFG1, 1, 1, 0),
+ 	SOC_SINGLE_TLV("Analog CH3 Mic Gain Volume", ADCX140_CH3_CFG1, 2, 42, 0,
+ 			adc_tlv),

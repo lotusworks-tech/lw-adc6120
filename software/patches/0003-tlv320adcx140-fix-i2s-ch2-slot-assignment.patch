@@ -1,0 +1,55 @@
+From: LotusWorks <apinales@lotusworks.io>
+Subject: [PATCH] tlv320adcx140: fix CH2 slot assignment for I2S and Left-Justified modes
+
+In I2S (and Left-Justified) mode the FSYNC signal splits the frame into a
+left half (FSYNC high) and a right half (FSYNC low).  The ADC determines
+which physical BCLKs to drive based on which FSYNC half a slot falls in:
+slots 0-31 are "left slots" (FSYNC-high period) and slots 32-63 are "right
+slots" (FSYNC-low period).
+
+The power-on-reset value for ASI_CH2 is 0x01 ("left slot 1"), which is
+correct for TDM mode where slots are numbered sequentially from the FSYNC
+edge regardless of polarity.  In I2S mode, however, "left slot 1" is the
+second slot-width inside the FSYNC-high window.  For a standard stereo
+frame (64 BCLKs, 32 per FSYNC half) only one slot fits in the FSYNC-high
+period, so "left slot 1" extends past the FSYNC falling edge and the ADC
+never drives the data line for it — producing hard zeros on the right
+channel at the I2S wire level regardless of gain, routing, or ADC enable
+settings.
+
+The correct assignment for the I2S right channel is slot 32 (0x20),
+"right slot 0", which is the first slot in the FSYNC-low half.
+
+Write ASI_CH2 = 0x20 inside set_dai_fmt() for both SND_SOC_DAIFMT_I2S
+and SND_SOC_DAIFMT_LEFT_J (which uses the same FSYNC-based left/right
+split).  DSP_A and DSP_B are sequential-slot modes and retain the default
+slot 1 assignment.
+
+---
+ sound/soc/codecs/tlv320adcx140.c | 12 ++++++++++++
+ 1 file changed, 12 insertions(+)
+
+--- a/tlv320adcx140.c
++++ b/tlv320adcx140.c
+@@ -788,9 +788,21 @@
+ 	switch (fmt & SND_SOC_DAIFMT_FORMAT_MASK) {
+ 	case SND_SOC_DAIFMT_I2S:
+ 		iface_reg1 |= ADCX140_I2S_MODE_BIT;
++		/*
++		 * In I2S mode the FSYNC polarity splits the frame into left
++		 * (FSYNC high) and right (FSYNC low) halves.  The POR value
++		 * for ASI_CH2 is 0x01 (left slot 1) which sits outside the
++		 * FSYNC-high window for a standard stereo frame, so the ADC
++		 * never drives that slot.  Slot 32 (0x20) is right slot 0
++		 * -- the first slot in the FSYNC-low half -- the correct
++		 * position for the second stereo channel.
++		 */
++		snd_soc_component_write(component, ADCX140_ASI_CH2, 0x20);
+ 		break;
+ 	case SND_SOC_DAIFMT_LEFT_J:
+ 		iface_reg1 |= ADCX140_LEFT_JUST_BIT;
++		/* Same left/right FSYNC split as I2S; CH2 must use right slot 0 */
++		snd_soc_component_write(component, ADCX140_ASI_CH2, 0x20);
+ 		break;
+ 	case SND_SOC_DAIFMT_DSP_A:
+ 		offset = 1;

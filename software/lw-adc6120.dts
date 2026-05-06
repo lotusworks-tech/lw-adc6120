@@ -1,0 +1,61 @@
+// SPDX-License-Identifier: GPL-2.0
+// Device Tree Overlay for LotusWorks ADC6120 HAT
+// TLV320ADC6120 dual-channel ADC on I2C1 @ 0x4E, I2S stereo capture
+
+/dts-v1/;
+/plugin/;
+
+/ {
+	compatible = "brcm,bcm2835";
+
+	// Enable the I2C1 bus and register the ADC6120 codec
+	fragment@0 {
+		target = <&i2c1>;
+		__overlay__ {
+			#address-cells = <1>;
+			#size-cells = <0>;
+			status = "okay";
+
+			tlv320adc6120: tlv320adc6120@4e {
+				compatible = "ti,tlv320adc6140";
+				reg = <0x4e>;
+				#sound-dai-cells = <0>;
+				status = "okay";
+			};
+		};
+	};
+
+	// Enable the I2S (PCM) interface
+	fragment@1 {
+		target = <&i2s_clk_producer>;
+		__overlay__ {
+			#sound-dai-cells = <0>;
+			status = "okay";
+		};
+	};
+
+	// Create an ALSA sound card using simple-audio-card
+	fragment@2 {
+		target-path = "/";
+		__overlay__ {
+			lw_adc_card: sound-lw-adc {
+				compatible = "simple-audio-card";
+				simple-audio-card,name = "LotusWorks-ADC6120";
+				simple-audio-card,format = "i2s";
+				status = "okay";
+
+				// Pi drives BCLK and FSYNC
+				simple-audio-card,bitclock-master = <&cpu_dai>;
+				simple-audio-card,frame-master = <&cpu_dai>;
+
+				cpu_dai: simple-audio-card,cpu {
+					sound-dai = <&i2s_clk_producer>;
+				};
+
+				codec_dai: simple-audio-card,codec {
+					sound-dai = <&tlv320adc6120>;
+				};
+			};
+		};
+	};
+};

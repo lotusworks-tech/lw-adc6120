@@ -1,0 +1,127 @@
+#!/bin/bash
+# lw-record — LotusWorks ADC6120 recording helper
+#
+# Usage:
+#   lw-record [OPTIONS] stereo   OUTPUT.wav
+#   lw-record [OPTIONS] mono1    OUTPUT.wav   (XLR1 only)
+#   lw-record [OPTIONS] mono2    OUTPUT.wav   (XLR2 only)
+#   lw-record [OPTIONS] dual-mono PREFIX      (PREFIX_ch1.wav + PREFIX_ch2.wav)
+#
+# Options:
+#   -r RATE   sample rate in Hz  (default: 48000)
+#             supported: 8000, 16000, 32000, 44100, 48000, 88200, 96000,
+#                        176400, 192000
+#             Note: rates above 48kHz require 192kHz-capable playback software
+#             (e.g. a DAW) to avoid resampling artifacts. Downsampling with a
+#             high-quality SRC (e.g. sox rate -v -L) produces clean output.
+#   -d SECS   duration in seconds (default: 5)
+#   -b BITS   output bit depth 16|24|32 (default: 32)
+#   -h        show this help
+
+set -euo pipefail
+
+HW_DEVICE="hw:LotusWorksADC61"
+HAT_SERVICE="lw-adc-hat-ctrl"
+RATE=48000
+DURATION=5
+BITS=32
+
+usage() {
+    sed -n '/^# Usage/,/^$/p' "$0" | sed 's/^# \?//'
+    exit "${1:-0}"
+}
+
+POSITIONAL=()
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -r) RATE="$2";     shift 2 ;;
+        -d) DURATION="$2"; shift 2 ;;
+        -b) BITS="$2";     shift 2 ;;
+        -h) usage 0 ;;
+        -*) echo "lw-record: unknown option $1" >&2; usage 1 ;;
+        *)  POSITIONAL+=("$1"); shift ;;
+    esac
+done
+set -- "${POSITIONAL[@]+"${POSITIONAL[@]}"}"
+
+case "$RATE" in
+    8000|16000|32000|44100|48000|88200|96000|176400|192000) ;;
+    *) echo "lw-record: unsupported rate $RATE (supported: 8000 16000 32000 44100 48000 88200 96000 176400 192000)" >&2; exit 1 ;;
+esac
+
+case "$BITS" in
+    16|24|32) ;;
+    *) echo "lw-record: unsupported bit depth $BITS (supported: 16 24 32)" >&2; exit 1 ;;
+esac
+
+[[ $# -lt 2 ]] && { echo "lw-record: MODE and OUTPUT required" >&2; usage 1; }
+
+MODE="$1"
+OUTPUT="$2"
+TMPFILE="$(mktemp /tmp/lw_raw_XXXXXX.wav)"
+HAT_WAS_ACTIVE=false
+
+cleanup() {
+    rm -f "$TMPFILE"
+    $HAT_WAS_ACTIVE && sudo systemctl start "$HAT_SERVICE" 2>/dev/null || true
+}
+trap cleanup EXIT
+
+capture() {
+    if systemctl is-active --quiet "$HAT_SERVICE" 2>/dev/null; then
+        HAT_WAS_ACTIVE=true
+        sudo systemctl stop "$HAT_SERVICE"
+        sleep 0.3
+    fi
+    arecord -D "$HW_DEVICE" -c 2 -f S32_LE -r "$RATE" -d "$DURATION" "$TMPFILE"
+}
+
+peak_info() {
+    local file="$1"
+    sox "$file" -n stat 2>&1 | awk '
+        /Maximum amplitude/ { peak=$3 }
+        /RMS.*amplitude/     { rms=$3  }
+        END { printf "peak=%-10s rms=%s\n", peak, rms }
+    '
+}
+
+case "$MODE" in
+    stereo)
+        echo "Recording stereo ${RATE} Hz / ${BITS}-bit / ${DURATION}s → ${OUTPUT}"
+        capture
+        sox "$TMPFILE" -b "$BITS" "$OUTPUT"
+        echo "  ch1(XLR1-L) ch2(XLR2-R)  $(peak_info "$OUTPUT")"
+        ;;
+
+    mono1)
+        echo "Recording mono XLR1 ${RATE} Hz / ${BITS}-bit / ${DURATION}s → ${OUTPUT}"
+        capture
+        sox "$TMPFILE" -b "$BITS" "$OUTPUT" remix 1
+        echo "  XLR1  $(peak_info "$OUTPUT")"
+        ;;
+
+    mono2)
+        echo "Recording mono XLR2 ${RATE} Hz / ${BITS}-bit / ${DURATION}s → ${OUTPUT}"
+        capture
+        sox "$TMPFILE" -b "$BITS" "$OUTPUT" remix 2
+        echo "  XLR2  $(peak_info "$OUTPUT")"
+        ;;
+
+    dual-mono)
+        CH1="${OUTPUT}_ch1.wav"
+        CH2="${OUTPUT}_ch2.wav"
+        echo "Recording dual-mono ${RATE} Hz / ${BITS}-bit / ${DURATION}s"
+        echo "  → ${CH1}  (XLR1)"
+        echo "  → ${CH2}  (XLR2)"
+        capture
+        sox "$TMPFILE" -b "$BITS" "$CH1" remix 1
+        sox "$TMPFILE" -b "$BITS" "$CH2" remix 2
+        echo "  XLR1  $(peak_info "$CH1")"
+        echo "  XLR2  $(peak_info "$CH2")"
+        ;;
+
+    *)
+        echo "lw-record: unknown mode '$MODE' (stereo|mono1|mono2|dual-mono)" >&2
+        usage 1
+        ;;
+esac

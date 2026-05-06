@@ -1,0 +1,30 @@
+From: LotusWorks <apinales@lotusworks.io>
+Subject: [PATCH] tlv320adcx140: expand supported rates to 8 kHz–192 kHz
+
+The upstream ADCX140_RATES mask only lists 44.1, 48, 96, and 192 kHz.
+Replace it with SNDRV_PCM_RATE_8000_192000 to also support 8, 16, 32,
+88.2, and 176.4 kHz, which the codec and RP1 I2S handle cleanly.
+
+384 kHz and 768 kHz are intentionally excluded: the RP1 cannot cleanly
+synthesize the required 24.576 MHz BCLK from its 54 MHz crystal without
+an external oscillator, producing non-harmonic clock-jitter sidebands
+around the signal.
+
+---
+ tlv320adcx140.h | 5 +----
+ 1 file changed, 1 insertion(+), 4 deletions(-)
+
+--- a/tlv320adcx140.h
++++ b/tlv320adcx140.h
+@@ -5,10 +5,7 @@
+ #ifndef _TLV320ADCX140_H
+ #define _TLV320ADCX140_H
+
+-#define ADCX140_RATES	(SNDRV_PCM_RATE_44100 | \
+-			 SNDRV_PCM_RATE_48000 | \
+-			 SNDRV_PCM_RATE_96000 | \
+-			 SNDRV_PCM_RATE_192000)
++#define ADCX140_RATES	SNDRV_PCM_RATE_8000_192000
+
+ #define ADCX140_FORMATS	(SNDRV_PCM_FMTBIT_S16_LE | \
+ 			 SNDRV_PCM_FMTBIT_S20_3LE | \

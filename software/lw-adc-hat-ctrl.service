@@ -1,0 +1,25 @@
+[Unit]
+Description=LotusWorks ADC6120 HAT Encoder/LED Control
+Documentation=https://github.com/lotusworks/lw-adc
+After=sound.target
+Wants=sound.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /opt/lw-adc-hat/lw_hat_ctrl.py
+Restart=on-failure
+RestartSec=3
+StandardOutput=journal
+StandardError=journal
+
+# Run as root for GPIO access (alternatively, add user to gpio group)
+User=root
+
+# Hardening
+ProtectSystem=strict
+ProtectHome=true
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

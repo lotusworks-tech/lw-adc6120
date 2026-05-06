@@ -1,0 +1,89 @@
+From: LotusWorks <apinales@lotusworks.io>
+Subject: [PATCH] tlv320adcx140: disable CH3/CH4 modulators for ADC6120
+
+The TLV320ADC6120 is a 2-channel part sharing a driver with 4-channel
+variants. Hardware POR default for IN_CH_EN_CFG (0x73) is 0xF0, enabling
+all four channel modulators. On the ADC6120, CH3 and CH4 do not physically
+exist; enabling their modulators causes audible harmonic distortion at 192 kHz.
+
+Root cause: ASoC DAPM stream activation uses strstr() matching. The single
+DAI stream name "Capture" is a substring of "CH3 Capture" and "CH4 Capture"
+(the stream names on CH3_ADC/CH4_ADC widgets), so DAPM powers up CH3/CH4
+ADC widgets for every capture stream, writing bits 5:4 of IN_CH_EN back to 1
+after any driver write.
+
+Fix: detect the device variant via of_device_id.data (2 channels for adc6140,
+4 for adc3140/adc5140). Two write sites cover all cases:
+
+1. set_bias_level(BIAS_ON): fires after all DAPM widget power-ups complete
+   on the first recording after driver load (cold start of the DAPM graph).
+
+2. hw_params: covers 2nd+ recordings where DAPM skips already-powered
+   CH3/CH4 widgets and does not re-write IN_CH_EN, but hw_params has
+   already cycled ADC power (pwr_ctrl false->true), resetting hardware
+   IN_CH_EN to POR=0xF0.
+
+---
+ tlv320adcx140.c | 30 ++++++++++++++++++++++++++++--
+ 1 file changed, 28 insertions(+), 2 deletions(-)
+
+--- a/tlv320adcx140.c
++++ b/tlv320adcx140.c
+@@ -33,6 +33,7 @@
+
+ 	unsigned int dai_fmt;
+ 	unsigned int slot_width;
++	unsigned int num_channels;
+ };
+
+ static const char * const gpo_config_names[] = {
+@@ -753,6 +754,11 @@
+
+ 	adcx140_pwr_ctrl(adcx140, true);
+
++	/* ADC6120: covers 2nd+ recordings where DAPM skips already-powered
++	 * CH3/CH4 widgets. set_bias_level BIAS_ON handles the first start. */
++	if (adcx140->num_channels <= 2)
++		regmap_write(adcx140->regmap, ADCX140_IN_CH_EN, 0xC0);
++
+ 	return 0;
+ }
+
+@@ -1082,6 +1088,13 @@
+
+ 	switch (level) {
+ 	case SND_SOC_BIAS_ON:
++		adcx140_pwr_ctrl(adcx140, true);
++		/* ADC6120: DAPM activates phantom CH3/CH4 modulators via
++		 * stream-name substring match before BIAS_ON fires. Clear
++		 * bits 5:4 here, after all widget power-ups complete. */
++		if (adcx140->num_channels <= 2)
++			regmap_write(adcx140->regmap, ADCX140_IN_CH_EN, 0xC0);
++		break;
+ 	case SND_SOC_BIAS_PREPARE:
+ 	case SND_SOC_BIAS_STANDBY:
+ 		adcx140_pwr_ctrl(adcx140, true);
+@@ -1126,9 +1139,9 @@
+
+ #ifdef CONFIG_OF
+ static const struct of_device_id tlv320adcx140_of_match[] = {
+-	{ .compatible = "ti,tlv320adc3140" },
+-	{ .compatible = "ti,tlv320adc5140" },
+-	{ .compatible = "ti,tlv320adc6140" },
++	{ .compatible = "ti,tlv320adc3140", .data = (void *)4 },
++	{ .compatible = "ti,tlv320adc5140", .data = (void *)4 },
++	{ .compatible = "ti,tlv320adc6140", .data = (void *)2 },
+ 	{},
+ };
+ MODULE_DEVICE_TABLE(of, tlv320adcx140_of_match);
+@@ -1152,6 +1165,10 @@
+
+ 	adcx140->phase_calib_on = false;
+ 	adcx140->dev = &i2c->dev;
++	adcx140->num_channels =
++		(unsigned int)(uintptr_t)of_device_get_match_data(&i2c->dev);
++	if (!adcx140->num_channels)
++		adcx140->num_channels = 4;
+
+ 	adcx140->gpio_reset = devm_gpiod_get_optional(adcx140->dev,
+ 						      "reset", GPIOD_OUT_LOW);
