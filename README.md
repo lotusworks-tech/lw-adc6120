@@ -2,7 +2,17 @@
 
 A Raspberry Pi HAT built around the Texas Instruments TLV320ADC6120 — a high-performance 2-channel Burr-Brown audio ADC with up to 123 dB dynamic range, programmable analog PGA, mic bias, and I²S output. The HAT provides two balanced XLR mic/line inputs with hardware gain control via rotary encoders and clipping indicator LEDs.
 
-This repository contains the KiCad hardware design (`lw_adc/`) and all supporting software (`software/`).
+This repository contains all supporting software (`software/`).
+
+![ADC6120 HAT side view](images/IMG_0817.jpg)
+
+---
+
+## Hardware
+
+| | |
+|:---:|:---:|
+| ![Front view — XLR inputs](images/IMG_0821.jpg) | ![Top view — PCB](images/IMG_0822.jpg) |
 
 ---
 
